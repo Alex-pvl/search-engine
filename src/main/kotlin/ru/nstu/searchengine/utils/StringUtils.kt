@@ -34,8 +34,7 @@ private val ignoreWords = setOf(
 
 fun String.isPreposition() = this in ignoreWords
 
-fun String.splitWithIndex() = Regex("[A-Za-zА-Яа-яЁё]+")
+fun String.splitWithIndex() = Regex("[A-Za-zА-Яа-яЁё0-9]+")
 	.findAll(this)
 	.map { it.value }
-	.toList()
 	.withIndex()

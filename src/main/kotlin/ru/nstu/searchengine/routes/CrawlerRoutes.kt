@@ -12,6 +12,12 @@ import java.util.concurrent.Executors
 @Serializable
 data class CrawlRequest(val urls: List<String>, val maxDepth: Int = 2)
 
+@Serializable
+data class HTMLRequest(val url: String)
+
+@Serializable
+data class LinkRequest(val url: String)
+
 fun Route.crawlerRoutes() {
 	val crawler = Crawler()
 	val crawlerExecutor = Executors.newCachedThreadPool()
@@ -31,9 +37,14 @@ fun Route.crawlerRoutes() {
 			call.respondText("Crawling started")
 		}
 		post("/html") {
-			val request = call.receive<CrawlRequest>()
-			val text = crawler.getHtml(request.urls[0])
+			val request = call.receive<HTMLRequest>()
+			val text = crawler.getHtml(request.url)
 			call.respondText(text)
+		}
+		post("/links") {
+			val request = call.receive<LinkRequest>()
+			val text = crawler.getLinks(request.url)
+			call.respond(text ?: "lol")
 		}
 	}
 }
