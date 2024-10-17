@@ -2,7 +2,11 @@ POST http://localhost:8080/crawler/start
 Content-Type: application/json
 
 {
-  "urls": ["https://ru.wikipedia.org/wiki/%D0%A2%D0%B5%D0%BB%D0%B5%D1%84%D0%BE%D0%BD"],
+  "urls": [
+    "https://ru.wikipedia.org/wiki/Java",
+    "https://habr.com/ru/companies/spring_aio/news/847460/",
+    "https://history.eco/category/drevnie-ruiny/"
+  ],
   "maxDepth": 2
 }
 

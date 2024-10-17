@@ -1,33 +1,35 @@
 package ru.nstu.searchengine.crawler
 
-import ru.nstu.searchengine.models.*
 import kotlinx.coroutines.*
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import ru.nstu.searchengine.models.*
 import ru.nstu.searchengine.utils.getBodyAsText
 import ru.nstu.searchengine.utils.isPreposition
 import ru.nstu.searchengine.utils.splitWithIndex
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 class Crawler {
+	private val dispatcher = Executors.newFixedThreadPool(8).asCoroutineDispatcher()
+	private val scope = CoroutineScope(dispatcher + SupervisorJob())
+
 	suspend fun crawl(urls: List<String>, maxDepth: Int = 2) {
-		val visitedUrls = mutableSetOf<String>()
+		val visitedUrls = ConcurrentHashMap.newKeySet<String>()
 		var currentDepthUrls = urls
 
 		for (depth in 1..maxDepth) {
-			val newUrls = mutableSetOf<String>()
+			val newUrls = ConcurrentHashMap.newKeySet<String>()
 			val jobs = mutableListOf<Job>()
 
 			for (url in currentDepthUrls) {
-				if (url !in visitedUrls) {
-					visitedUrls.add(url)
-					val job = CoroutineScope(Dispatchers.IO).launch {
-						processUrl(url)?.let { foundUrls ->
-							newUrls.addAll(foundUrls)
-						}
+				if (visitedUrls.add(url)) {
+					val job = scope.launch {
+						processUrl(url)?.let { newUrls.addAll(it) }
 					}
 					jobs.add(job)
 				}
@@ -41,52 +43,53 @@ class Crawler {
 
 	fun getHtml(url: String) = Jsoup.connect(url).get().getBodyAsText()
 
-	suspend fun getLinks(url: String) = processUrl(url)
+	fun getLinks(url: String) = processUrl(url)
 
-	private suspend fun processUrl(url: String): List<String>? {
+	private fun processUrl(url: String): List<String>? {
 		return try {
-			withContext(Dispatchers.IO) {
-				val document = Jsoup.connect(url).get()
-				addToIndex(document, url)
-				parseLinks(document, url)
-			}
+			val document = Jsoup.connect(url).get()
+			addToIndex(document, url)
+			parseLinks(document, url)
 		} catch (e: Exception) {
-			println("Error processing $url: ${e.message}")
+			log.error("Error processing $url: ${e.message}", e)
 			null
 		}
 	}
 
 	private fun addToIndex(document: Document, url: String) {
-		transaction {
-			val urlId = getOrCreateUrlId(url)
-			val text = document.getBodyAsText()
+		runBlocking(Dispatchers.IO) {
+			newSuspendedTransaction {
+				val urlId = getOrCreateUrlId(url)
+				val text = document.getBodyAsText()
 
-			for ((location, word) in text.splitWithIndex()) {
-				val isIgnored = word.isPreposition()
-				val wordId = getOrCreateWordId(word, isIgnored)
-				WordLocations.insert {
-					it[this.url] = urlId
-					it[this.word] = wordId
-					it[this.location] = location
+				for ((location, word) in text.splitWithIndex()) {
+					val isIgnored = word.isPreposition()
+					val wordId = getOrCreateWordId(word, isIgnored) ?: continue
+					WordLocations.insertIgnore {
+						it[this.url] = urlId
+						it[this.word] = wordId
+						it[this.location] = location
+					}
 				}
 			}
 		}
 	}
 
-	private suspend fun parseLinks(document: Document, fromUrl: String): List<String> {
+	private fun parseLinks(document: Document, fromUrl: String): List<String> {
+		log.info("Start parsing link: $fromUrl")
 		val links = mutableListOf<String>()
-		withContext(Dispatchers.IO) {
-			transaction {
+		runBlocking(Dispatchers.IO) {
+			newSuspendedTransaction {
 				val fromUrlId = getOrCreateUrlId(fromUrl)
-				log.info("fromUrlId: $fromUrlId")
-
 				val elements = document.getElementsByTag("a")
-				log.info("elements: $elements")
 
 				for ((visited, element) in elements.withIndex()) {
-					val href = element.attr("abs:href")
-					if (href.isNotBlank() && visited < MAX_LINKS_COUNT) {
-						log.info("href: $href")
+					if (visited >= MAX_LINKS_COUNT) break
+
+					val href = element.absUrl("href")
+
+					if (href.isNotBlank() && href.startsWith("http")) {
+						log.info("[$fromUrlId]: href=$href")
 
 						val toUrlId = getOrCreateUrlId(href)
 						val linkId = getOrCreateLinkId(fromUrlId, toUrlId)
@@ -94,8 +97,8 @@ class Crawler {
 
 						for ((_, word) in linkText.splitWithIndex()) {
 							val isIgnored = word.isPreposition()
-							val wordId = getOrCreateWordId(word, isIgnored)
-							LinkWords.insert {
+							val wordId = getOrCreateWordId(word, isIgnored) ?: continue
+							LinkWords.insertIgnore {
 								it[this.word] = wordId
 								it[this.link] = linkId
 							}
@@ -116,12 +119,16 @@ class Crawler {
 			}.value
 	}
 
-	private fun getOrCreateWordId(word: String, isIgnored: Boolean): Int {
-		return Words.select { Words.word eq word.lowercase() }.map { it[Words.id].value }.firstOrNull()
-			?: Words.insertAndGetId {
-				it[Words.word] = word.lowercase()
-				it[Words.isIgnored] = isIgnored
-			}.value
+	private fun getOrCreateWordId(word: String, isIgnored: Boolean): Int? {
+		return try {
+			Words.select { Words.word eq word.lowercase() }.map { it[Words.id].value }.firstOrNull()
+				?: Words.insertIgnoreAndGetId {
+					it[Words.word] = word.lowercase()
+					it[Words.isIgnored] = isIgnored
+				}?.value
+		} catch (e: Exception) {
+			null // ON CONFLICT DO NOTHING
+		}
 	}
 
 	private fun getOrCreateLinkId(fromUrlId: Int, toUrlId: Int): Int {
