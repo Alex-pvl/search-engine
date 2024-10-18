@@ -2,24 +2,24 @@
 Сервис для парсинга, индексирования и поиска.
 
 ### Запуск локально
-- Клонируем репозиторий:
+1. Клонируем репозиторий:
 ```shell
 git clone https://github.com/alex-pvl/search-engine.git
 ```
-- Создаем БД
+2. Создаем БД
 ```sql
 CREATE ROLE search_engine WITH SUPERUSER LOGIN PASSWORD 'search_engine';
 CREATE DATABASE search_engine OWNER search_engine;
 ```
-- Запускаем проект
+3. Запускаем проект
 ```shell
 chmod +x ./gradlew
 ./gradlew build
 ./gradlew run
 ```
-- Дергаем эндпоинт `/crawler/start` в файле `requests.http`
-- Записываем статистические данные в json файл через ручку /crawler/json
-- Запускаем python-скрипт для визуализации результатов
+4. Дергаем эндпоинт `/crawler/start` в файле `requests.http`
+5. Записываем статистические данные в json файл через ручку `/crawler/json`
+6. Запускаем python-скрипт для визуализации результатов
 ```shell
 cd src/main/resources
 python3 stats.py
