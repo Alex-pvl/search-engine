@@ -46,5 +46,8 @@ fun Route.crawlerRoutes() {
 			val text = crawler.getLinks(request.url)
 			call.respond(text ?: "lol")
 		}
+		get("/stats") {
+			call.respond(crawler.getStatistics())
+		}
 	}
 }

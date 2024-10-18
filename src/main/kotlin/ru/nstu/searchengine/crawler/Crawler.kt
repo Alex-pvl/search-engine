@@ -1,6 +1,7 @@
 package ru.nstu.searchengine.crawler
 
 import kotlinx.coroutines.*
+import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jsoup.Jsoup
@@ -12,11 +13,13 @@ import ru.nstu.searchengine.utils.getBodyAsText
 import ru.nstu.searchengine.utils.isPreposition
 import ru.nstu.searchengine.utils.splitWithIndex
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 
 class Crawler {
-	private val dispatcher = Executors.newFixedThreadPool(8).asCoroutineDispatcher()
+	private val dispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
 	private val scope = CoroutineScope(dispatcher + SupervisorJob())
+	private val statistics = CopyOnWriteArrayList<StatisticResponse>()
 
 	suspend fun crawl(urls: List<String>, maxDepth: Int = 2) {
 		val visitedUrls = ConcurrentHashMap.newKeySet<String>()
@@ -45,6 +48,8 @@ class Crawler {
 
 	fun getLinks(url: String) = processUrl(url)
 
+	fun getStatistics() = statistics
+
 	private fun processUrl(url: String): List<String>? {
 		return try {
 			val document = Jsoup.connect(url).get()
@@ -53,6 +58,8 @@ class Crawler {
 		} catch (e: Exception) {
 			log.error("Error processing $url: ${e.message}", e)
 			null
+		} finally {
+			collectStatistics(url)
 		}
 	}
 
@@ -112,6 +119,22 @@ class Crawler {
 		return links
 	}
 
+	private fun collectStatistics(url: String) {
+		runBlocking(Dispatchers.IO) {
+			newSuspendedTransaction {
+				val stats = Statistics(
+					urlsCount = Urls.selectAll().count(),
+					wordsCount = Words.selectAll().count(),
+					wordLocationsCount = WordLocations.selectAll().count(),
+					linksCount = Links.selectAll().count(),
+					linkWordsCount = LinkWords.selectAll().count()
+				)
+				val statisticResponse = StatisticResponse(url, stats)
+				statistics.addIfAbsent(statisticResponse)
+			}
+		}
+	}
+
 	private fun getOrCreateUrlId(url: String): Int {
 		return Urls.select { Urls.url eq url }.map { it[Urls.id].value }.firstOrNull()
 			?: Urls.insertAndGetId {
@@ -146,3 +169,18 @@ class Crawler {
 		const val MAX_LINKS_COUNT = 100
 	}
 }
+
+@Serializable
+data class StatisticResponse(
+	val url: String,
+	val statistics: Statistics,
+)
+
+@Serializable
+data class Statistics(
+	val urlsCount: Long,
+	val wordsCount: Long,
+	val wordLocationsCount: Long,
+	val linksCount: Long,
+	val linkWordsCount: Long,
+)
