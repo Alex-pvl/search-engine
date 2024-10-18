@@ -17,3 +17,10 @@ chmod +x ./gradlew
 ./gradlew build
 ./gradlew run
 ```
+- Дергаем эндпоинт `/crawler/start` в файле `requests.http`
+- Записываем статистические данные в json файл через ручку /crawler/json
+- Запускаем python-скрипт для визуализации результатов
+```shell
+cd src/main/resources
+python3 stats.py
+```

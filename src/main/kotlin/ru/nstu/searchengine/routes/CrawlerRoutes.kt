@@ -1,37 +1,23 @@
 package ru.nstu.searchengine.routes
 
-import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import kotlinx.coroutines.*
-import kotlinx.serialization.Serializable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import ru.nstu.searchengine.crawler.Crawler
-import java.util.concurrent.Executors
-
-@Serializable
-data class CrawlRequest(val urls: List<String>, val maxDepth: Int = 2)
-
-@Serializable
-data class HTMLRequest(val url: String)
-
-@Serializable
-data class LinkRequest(val url: String)
+import ru.nstu.searchengine.routes.dto.CrawlRequest
+import ru.nstu.searchengine.routes.dto.HTMLRequest
+import ru.nstu.searchengine.routes.dto.LinkRequest
 
 fun Route.crawlerRoutes() {
 	val crawler = Crawler()
-	val crawlerExecutor = Executors.newCachedThreadPool()
-	val crawlerDispatcher = crawlerExecutor.asCoroutineDispatcher()
-	val crawlerScope = CoroutineScope(crawlerDispatcher + SupervisorJob())
-
-	environment.monitor.subscribe(ApplicationStopped) {
-		crawlerExecutor.shutdown()
-	}
 
 	route("/crawler") {
 		post("/start") {
 			val request = call.receive<CrawlRequest>()
-			crawlerScope.launch {
+			CoroutineScope(Dispatchers.IO).launch {
 				crawler.crawl(request.urls, request.maxDepth)
 			}
 			call.respondText("Crawling started")
@@ -44,10 +30,14 @@ fun Route.crawlerRoutes() {
 		post("/links") {
 			val request = call.receive<LinkRequest>()
 			val text = crawler.getLinks(request.url)
-			call.respond(text ?: "lol")
+			call.respond(text ?: listOf())
 		}
 		get("/stats") {
 			call.respond(crawler.getStatistics())
+		}
+		get("/json") {
+			crawler.serializeJson()
+			call.respond("done")
 		}
 	}
 }

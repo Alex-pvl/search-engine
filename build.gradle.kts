@@ -31,7 +31,7 @@ dependencies {
     implementation("io.ktor:ktor-server-content-negotiation")
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-config-yaml")
-    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("io.ktor:ktor-server-metrics-micrometer:$ktorVersion")
     implementation("io.micrometer:micrometer-registry-prometheus:$prometheusVersion")
 
@@ -51,12 +51,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion")
 }
 
-tasks {
-    shadowJar {
-        archiveBaseName.set("mycrawler")
-        archiveVersion.set("")
-        manifest {
-            attributes(Pair("Main-Class", "ru.nstu.searchengine.ApplicationKt"))
-        }
-    }
+kotlin {
+    jvmToolchain(21)
 }

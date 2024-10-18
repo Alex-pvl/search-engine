@@ -1,0 +1,22 @@
+### /start
+POST http://localhost:8080/crawler/start
+Content-Type: application/json
+
+{
+  "urls": [
+    "https://ru.wikipedia.org/wiki/Java",
+    "https://habr.com/ru/companies/spring_aio/news/847460/",
+    "https://history.eco/category/drevnie-ruiny/"
+  ]
+}
+
+### save stats in JSON file
+GET http://localhost:8080/crawler/json
+
+### links
+POST http://localhost:8080/crawler/links
+Content-Type: application/json
+
+{
+  "url": "https://ru.wikipedia.org/wiki/%D0%9A%D0%BE%D0%BC%D0%BF%D1%8C%D1%8E%D1%82%D0%B5%D1%80"
+}
