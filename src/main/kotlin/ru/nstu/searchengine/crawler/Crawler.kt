@@ -83,9 +83,9 @@ class Crawler {
 	}
 
 	private fun parseLinks(document: Document, fromUrl: String): List<String> {
-		log.info("Start parsing link: $fromUrl")
 		val links = mutableListOf<String>()
 		runBlocking(Dispatchers.IO) {
+			log.info("Start parsing link: $fromUrl")
 			newSuspendedTransaction {
 				val fromUrlId = getOrCreateUrlId(fromUrl)
 				val elements = document.getElementsByTag("a")
