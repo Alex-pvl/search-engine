@@ -24,3 +24,13 @@ chmod +x ./gradlew
 cd src/main/resources
 python3 stats.py
 ```
+---
+### Альтернативный мониторинг
+5. Переходим на ветку `monitoring`
+6. Поднимаем прометеус с графаной
+7. Добавляем дашборду с метриками паука:
+- `crawler_urls_count`
+- `crawler_words_count`
+- `crawler_wordLocations_count`
+- `crawler_links_count`
+- `crawler_linkWords_count`
