@@ -24,6 +24,6 @@ fun main() {
 
 fun Application.module() {
 	configureSerialization()
-	configureMonitoring()
-	configureRouting()
+	val prometheusMeterRegistry = configureMonitoring()
+	configureRouting(prometheusMeterRegistry)
 }
