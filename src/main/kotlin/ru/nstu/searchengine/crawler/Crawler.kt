@@ -13,17 +13,18 @@ import ru.nstu.searchengine.models.*
 import ru.nstu.searchengine.utils.getBodyAsText
 import ru.nstu.searchengine.utils.isPreposition
 import ru.nstu.searchengine.utils.splitWithIndex
+import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 class Crawler(
-	meterRegistry: PrometheusMeterRegistry,
+	private val meterRegistry: PrometheusMeterRegistry,
 ) {
 	private val dispatcher = Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher()
 	private val scope = CoroutineScope(dispatcher + SupervisorJob())
 
 	init {
-		registerMetrics(meterRegistry)
+		registerMetrics()
 	}
 
 	suspend fun crawl(urls: List<String>, maxDepth: Int = 2) {
@@ -54,6 +55,8 @@ class Crawler(
 		return try {
 			val document = Jsoup.connect(url).get()
 			addToIndex(document, url)
+			val domain = URL(url).host
+			meterRegistry.counter("crawler_domain_count", "domain", domain).increment()
 			parseLinks(document, url)
 		} catch (e: Exception) {
 			log.error("Error processing $url: ${e::class.simpleName}")
@@ -75,6 +78,7 @@ class Crawler(
 						it[this.word] = wordId
 						it[this.location] = location
 					}
+					meterRegistry.counter("crawler_word_count", "word", word.lowercase()).increment()
 				}
 			}
 		}
@@ -144,7 +148,7 @@ class Crawler(
 			}.value
 	}
 
-	private fun registerMetrics(meterRegistry: PrometheusMeterRegistry) {
+	private fun registerMetrics() {
 		Gauge.builder("crawler.urls.count") { getUrlsCount() }
 			.description("Number of URLs processed")
 			.register(meterRegistry)

@@ -7,10 +7,3 @@ object WordLocations : IntIdTable("word_locations") {
 	val word = reference("word_id", Words)
 	val location = integer("location")
 }
-
-data class WordLocation(
-	val id: Int,
-	val urlId: Int,
-	val wordId: Int,
-	val location: Int,
-)
