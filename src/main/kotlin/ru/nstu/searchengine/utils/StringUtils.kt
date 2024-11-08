@@ -1,5 +1,7 @@
 package ru.nstu.searchengine.utils
 
+import java.net.URL
+
 private val ignoreWords = setOf(
 	"без", "безо",
 	"близ",
@@ -38,3 +40,5 @@ fun String.splitWithIndex() = Regex("[A-Za-zА-Яа-яЁё0-9]+")
 	.findAll(this)
 	.map { it.value }
 	.withIndex()
+
+fun String.extractDomain(): String = URL(this).host

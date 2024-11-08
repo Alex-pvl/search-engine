@@ -7,7 +7,7 @@ import io.ktor.server.routing.*
 import io.micrometer.prometheusmetrics.PrometheusConfig
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 
-fun Application.configureMonitoring() {
+fun Application.configureMonitoring(): PrometheusMeterRegistry {
 	val micrometerRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
 
 	install(MicrometerMetrics) {
@@ -19,4 +19,6 @@ fun Application.configureMonitoring() {
 			call.respondText { micrometerRegistry.scrape() }
 		}
 	}
+
+	return micrometerRegistry
 }
