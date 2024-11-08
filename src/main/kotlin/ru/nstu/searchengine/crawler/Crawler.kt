@@ -10,18 +10,20 @@ import org.jsoup.nodes.Document
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import ru.nstu.searchengine.models.*
+import ru.nstu.searchengine.utils.extractDomain
 import ru.nstu.searchengine.utils.getBodyAsText
 import ru.nstu.searchengine.utils.isPreposition
 import ru.nstu.searchengine.utils.splitWithIndex
-import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 class Crawler(
 	private val meterRegistry: PrometheusMeterRegistry,
 ) {
 	private val dispatcher = Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher()
 	private val scope = CoroutineScope(dispatcher + SupervisorJob())
+	private val indexedLinksCount = AtomicInteger(0)
 
 	init {
 		registerMetrics()
@@ -36,9 +38,19 @@ class Crawler(
 			val jobs = mutableListOf<Job>()
 
 			for (url in currentDepthUrls) {
+				if (indexedLinksCount.get() >= MAX_LINKS_COUNT) {
+					log.info("Max links count reached. Stopping.")
+					jobs.forEach { it.cancel() }
+					break
+				}
 				if (visitedUrls.add(url)) {
 					val job = scope.launch {
-						processUrl(url)?.let { newUrls.addAll(it) }
+						val newLinks = processUrl(url)
+						if (newLinks != null) {
+							synchronized(newUrls) {
+								newUrls.addAll(newLinks)
+							}
+						}
 					}
 					jobs.add(job)
 				}
@@ -50,13 +62,16 @@ class Crawler(
 		log.info("Crawling ended.")
 	}
 
-	private fun processUrl(url: String): List<String>? {
+	private suspend fun processUrl(url: String): List<String>? {
 		log.info("Start parsing link: $url")
 		return try {
 			val document = Jsoup.connect(url).get()
-			addToIndex(document, url)
-			val domain = URL(url).host
-			meterRegistry.counter("crawler_domain_count", "domain", domain).increment()
+			val indexDeferred = CompletableDeferred<Unit>()
+			scope.launch {
+				addToIndex(document, url)
+				indexDeferred.complete(Unit)
+			}
+			indexDeferred.await()
 			parseLinks(document, url)
 		} catch (e: Exception) {
 			log.error("Error processing $url: ${e::class.simpleName}")
@@ -64,42 +79,42 @@ class Crawler(
 		}
 	}
 
-	private fun addToIndex(document: Document, url: String) {
-		runBlocking(Dispatchers.IO) {
-			transaction {
-				val urlId = getOrCreateUrlId(url)
-				val text = document.getBodyAsText()
+	private suspend fun addToIndex(document: Document, url: String) = withContext(scope.coroutineContext) {
+		indexedLinksCount.incrementAndGet()
+		transaction {
+			val domainId = getOrCreateDomain(url.extractDomain())
+			val urlId = getOrCreateUrlId(url, domainId)
+			val text = document.getBodyAsText()
 
-				for ((location, word) in text.splitWithIndex()) {
-					val isIgnored = word.isPreposition()
-					val wordId = getOrCreateWordId(word, isIgnored) ?: continue
-					WordLocations.insertIgnore {
-						it[this.url] = urlId
-						it[this.word] = wordId
-						it[this.location] = location
-					}
-					meterRegistry.counter("crawler_word_count", "word", word.lowercase()).increment()
+			for ((location, word) in text.splitWithIndex()) {
+				val isIgnored = word.isPreposition()
+				val wordId = getOrCreateWordId(word, isIgnored) ?: continue
+				WordLocations.insertIgnore {
+					it[this.url] = urlId
+					it[this.word] = wordId
+					it[this.location] = location
 				}
+				meterRegistry.counter("crawler_word_count", "word", word.lowercase()).increment()
 			}
 		}
 	}
 
-	private fun parseLinks(document: Document, fromUrl: String): List<String> {
-		val links = mutableListOf<String>()
-		runBlocking(Dispatchers.IO) {
+	private suspend fun parseLinks(document: Document, fromUrl: String): List<String> =
+		withContext(scope.coroutineContext) {
+			val links = mutableListOf<String>()
 			transaction {
-				val fromUrlId = getOrCreateUrlId(fromUrl)
+				val domainId = getOrCreateDomain(fromUrl.extractDomain())
+				val fromUrlId = getOrCreateUrlId(fromUrl, domainId)
 				val elements = document.getElementsByTag("a")
 
-				for ((visited, element) in elements.withIndex()) {
-					if (visited >= MAX_LINKS_COUNT) break
-
+				for (element in elements) {
 					val href = element.absUrl("href")
 
 					if (href.isNotBlank() && href.startsWith("http")) {
 						log.info("[$fromUrlId]: href=$href")
 
-						val toUrlId = getOrCreateUrlId(href)
+						val hrefDomainId = getOrCreateDomain(href.extractDomain())
+						val toUrlId = getOrCreateUrlId(href, hrefDomainId)
 						val linkId = getOrCreateLinkId(fromUrlId, toUrlId)
 						val linkText = element.text()
 
@@ -115,14 +130,14 @@ class Crawler(
 					}
 				}
 			}
+			links
 		}
-		return links
-	}
 
-	private fun getOrCreateUrlId(url: String): Int {
+	private fun getOrCreateUrlId(url: String, domainId: Int): Int {
 		return Urls.select { Urls.url like url }.map { it[Urls.id].value }.firstOrNull()
 			?: Urls.insertAndGetId {
 				it[Urls.url] = url
+				it[Urls.domainId] = domainId
 			}.value
 	}
 
@@ -148,6 +163,15 @@ class Crawler(
 			}.value
 	}
 
+	private fun getOrCreateDomain(domain: String): Int {
+		return Domains.select { (Domains.domain like domain) }
+			.map { it[Domains.id].value }
+			.firstOrNull()
+			?: Domains.insertAndGetId {
+				it[this.domain] = domain
+			}.value
+	}
+
 	private fun registerMetrics() {
 		Gauge.builder("crawler.urls.count") { getUrlsCount() }
 			.description("Number of URLs processed")
@@ -168,6 +192,10 @@ class Crawler(
 		Gauge.builder("crawler.linkWords.count") { getLinkWordsCount() }
 			.description("Number of link words")
 			.register(meterRegistry)
+
+		Gauge.builder("crawler.indexedLinksCount.count") { getAtomic() }
+			.description("Number of indexed links")
+			.register(meterRegistry)
 	}
 
 	private fun getUrlsCount() = transaction { Urls.selectAll().count().toDouble() }
@@ -175,9 +203,10 @@ class Crawler(
 	private fun getWordLocationsCount() = transaction { WordLocations.selectAll().count().toDouble() }
 	private fun getLinksCount() = transaction { Links.selectAll().count().toDouble() }
 	private fun getLinkWordsCount() = transaction { LinkWords.selectAll().count().toDouble() }
+	private fun getAtomic() = indexedLinksCount.get().toDouble()
 
 	private companion object {
 		val log: Logger = LoggerFactory.getLogger(Crawler::class.java)
-		const val MAX_LINKS_COUNT = 50
+		const val MAX_LINKS_COUNT = 200
 	}
 }

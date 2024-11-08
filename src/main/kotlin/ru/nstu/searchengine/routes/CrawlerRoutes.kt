@@ -7,8 +7,11 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import ru.nstu.searchengine.crawler.Crawler
-import ru.nstu.searchengine.routes.dto.CrawlRequest
+
+@Serializable
+data class CrawlRequest(val urls: List<String>, val maxDepth: Int = 2)
 
 fun Route.crawlerRoutes(prometheusMeterRegistry: PrometheusMeterRegistry) {
 	val crawler = Crawler(prometheusMeterRegistry)
