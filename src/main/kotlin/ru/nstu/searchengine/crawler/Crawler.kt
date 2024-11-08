@@ -207,6 +207,6 @@ class Crawler(
 
 	private companion object {
 		val log: Logger = LoggerFactory.getLogger(Crawler::class.java)
-		const val MAX_LINKS_COUNT = 200
+		const val MAX_LINKS_COUNT = 50
 	}
 }
