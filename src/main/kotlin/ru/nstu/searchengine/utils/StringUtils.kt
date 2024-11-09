@@ -62,7 +62,6 @@ private fun getMarkedHTML(wordList: List<String>, queryList: List<String>): Stri
 		}
 	}
 
-	// Оборачиваем текст в базовую HTML-структуру
 	return """
             <html>
             <head>

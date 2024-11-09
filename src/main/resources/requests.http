@@ -8,27 +8,30 @@ Content-Type: application/json
     "https://habr.com/ru/companies/ru_mts/articles",
     "https://history.eco"
   ],
-  "maxDepth": 2
+  "maxDepth": 3
 }
 
 ### searcher/match-rows
-GET http://localhost:8080/searcher/match-rows?query=язык программирования
+GET http://localhost:8080/searcher/match-rows?query=языки программирования
 
 ### searcher/sorted-list
-GET http://localhost:8080/searcher/sorted-list?query=язык программирования
+GET http://localhost:8080/searcher/sorted-list?query=языки программирования
 
-### searcher/calculate-page-rank
+### searcher/page-rank
 POST http://localhost:8080/searcher/page-rank
 Content-Type: application/json
 
 {
-  "iterations": 20
+  "iterations": 4
 }
+
+### searcher/page-rank-scores
+GET http://localhost:8080/searcher/page-rank-scores?query=древняя история
 
 ### searcher/highlight
 POST http://localhost:8080/searcher/highlight
 Content-Type: application/json
 
 {
-  "query": "язык программирования"
+  "query": "языки программирования"
 }

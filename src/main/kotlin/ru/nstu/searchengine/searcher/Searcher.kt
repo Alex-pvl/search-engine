@@ -40,18 +40,16 @@ class Searcher {
 		}
 	}
 
-	// Функция 5: получение отсортированного списка URL
 	fun getSortedList(queryString: String): List<Pair<String, Double>> {
 		val rows = getMatchRows(queryString)
 		val frequencyScores = frequencyScore(rows)
 
 		return frequencyScores.toList()
 			.sortedByDescending { it.second }
-			.take(50)
+			.take(10)
 			.map { getUrlName(it.first)!! to it.second }
 	}
 
-	// Функция 7: вычисление PageRank
 	suspend fun calculatePageRank(iterations: Int = 5) {
 		newSuspendedTransaction {
 			SchemaUtils.drop(PageRanks)
@@ -91,6 +89,18 @@ class Searcher {
 		log.info("calculatePageRank: iterations=$iterations ended")
 	}
 
+	fun pagerankScore(query: String): Map<Int, Double> {
+		val rows = getMatchRows(query)
+		val scores = transaction {
+			rows.associate { row ->
+				val score = PageRanks.select { PageRanks.urlId eq row.urlId }.orderBy(PageRanks.score, SortOrder.DESC)
+					.singleOrNull()?.get(PageRanks.score) ?: 0.0
+				row.urlId to score
+			}
+		}
+		return normalizeScores(scores, smallIsBetter = false)
+	}
+
 	fun highlight(query: String) {
 		val list = getSortedList(query)
 		val queryList = query.separateWords()
@@ -99,7 +109,7 @@ class Searcher {
 			val url = it.first
 			val document = Jsoup.connect(url).get()
 			val text = document.getBodyAsText()
-			text.createMarkedHtmlFile("highlighted_${it.first.hashCode()}.html", queryList)
+			text.createMarkedHtmlFile("highlighted_${it.hashCode()}.html", queryList)
 		}
 	}
 
@@ -113,7 +123,6 @@ class Searcher {
 		}
 	}
 
-	// Функция 4: вычисление частоты слов
 	private fun frequencyScore(rows: List<MatchRow>): Map<Int, Double> {
 		val counts = rows.groupingBy { it.urlId }.eachCount().mapValues { it.value.toDouble() }
 		return normalizeScores(counts, smallIsBetter = false)

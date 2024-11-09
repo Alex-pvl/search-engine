@@ -51,6 +51,5 @@ object DatabaseFactory {
 			exec("REINDEX INDEX links_to_idx;")
 			exec("REINDEX INDEX pagerank_url_id_idx;")
 		}
-
 	}
 }

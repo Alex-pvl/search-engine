@@ -101,14 +101,14 @@ class Crawler(
 
 	private suspend fun parseLinks(document: Document, fromUrl: String): List<String> =
 		withContext(scope.coroutineContext) {
-			val links = mutableListOf<String>()
+			val links = mutableSetOf<String>()
 			transaction {
 				val domainId = getOrCreateDomain(fromUrl.extractDomain())
 				val fromUrlId = getOrCreateUrlId(fromUrl, domainId)
 				val elements = document.getElementsByTag("a")
 
 				for (element in elements) {
-					val href = element.absUrl("href")
+					val href = element.absUrl("href").substringBefore("#")
 
 					if (href.isNotBlank() && href.startsWith("http")) {
 						log.info("[$fromUrlId]: href=$href")
@@ -130,7 +130,7 @@ class Crawler(
 					}
 				}
 			}
-			links
+			links.toList()
 		}
 
 	private fun getOrCreateUrlId(url: String, domainId: Int): Int {

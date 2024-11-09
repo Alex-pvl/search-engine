@@ -39,6 +39,12 @@ fun Route.searcherRoutes() {
 			}
 			call.respond("Calculating PageRank started")
 		}
+		get("/page-rank-scores") {
+			val query = call.parameters["query"] ?:
+				return@get call.respondText("Query parameter is missing", status = HttpStatusCode.BadRequest)
+			val result = searcher.pagerankScore(query)
+			call.respond(result)
+		}
 		post("/highlight") {
 			val request = call.receive<QueryRequest>()
 			searcher.highlight(request.query)
